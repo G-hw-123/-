@@ -1,169 +1,150 @@
+# app.py
 import streamlit as st
 import pandas as pd
-import io
-import matplotlib.pyplot as plt
-from wordcloud import WordCloud
-import seaborn as sns
+from pyecharts import options as opts
+from pyecharts.charts import WordCloud, Bar, Line, Pie, Scatter, Funnel, Radar
+from pyecharts.globals import ThemeType
+
 from fetch import fetch_text
-from tokenize_words import get_top_words
+from tokenize_words import get_word_frequency
 
+# ===================== 页面基础配置 =====================
+st.set_page_config(page_title="文本词频分析系统", layout="wide")
+st.title("📄 网页文本词频分析与可视化平台")
 
-def generate_wordcloud(data):
-    word_dict = {word: freq for word, freq in data}
-    wc = WordCloud(
-        font_path=None,
-        width=800,
-        height=400,
-        background_color='white',
-        max_words=100,
-        prefer_horizontal=0.9
-    ).generate_from_frequencies(word_dict)
-    
-    fig, ax = plt.subplots(figsize=(12, 6))
-    ax.imshow(wc, interpolation='bilinear')
-    ax.axis('off')
-    plt.title('Word Cloud', fontsize=16)
-    return fig
+# ===================== 侧边栏配置 =====================
+with st.sidebar:
+    st.header("功能设置")
+    url = st.text_input("请输入文章URL：", value="")
+    min_frequency = st.slider("最低词频过滤阈值", min_value=1, max_value=20, value=2)
+    chart_type = st.selectbox(
+        "选择可视化图表类型",
+        [
+            "词云图", "柱状图", "折线图", "饼图",
+            "散点图", "漏斗图", "雷达图"
+        ]
+    )
+    run_btn = st.button("开始分析")
 
+# ===================== 图表渲染函数（字典派发） =====================
+def render_wordcloud(data):
+    words = [(k, v) for k, v in data.most_common(50)]
+    c = (
+        WordCloud(init_opts=opts.InitOpts(theme=ThemeType.MACARONS, width="1000px", height="600px"))
+        .add(series_name="词频", data_pair=words, word_size_range=[10, 80])
+        .set_global_opts(title_opts=opts.TitleOpts(title="文本词云图"))
+    )
+    return c.render_embed()
 
-def generate_bar(data):
-    words = [item[0] for item in data]
-    freqs = [item[1] for item in data]
-    
-    fig, ax = plt.subplots(figsize=(12, 6))
-    sns.barplot(x=freqs, y=words, ax=ax, palette='viridis')
-    ax.set_title('柱状图', fontsize=16)
-    ax.set_xlabel('词频', fontsize=12)
-    ax.set_ylabel('词汇', fontsize=12)
-    plt.tight_layout()
-    return fig
+def render_bar(data):
+    top20 = data.most_common(20)
+    x = [i[0] for i in top20]
+    y = [i[1] for i in top20]
+    c = (
+        Bar(init_opts=opts.InitOpts(theme=ThemeType.MACARONS, width="1000px", height="600px"))
+        .add_xaxis(x)
+        .add_yaxis("词频", y)
+        .set_global_opts(title_opts=opts.TitleOpts(title="Top20 词汇词频柱状图"), xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(rotate=-45)))
+    )
+    return c.render_embed()
 
+def render_line(data):
+    top20 = data.most_common(20)
+    x = [i[0] for i in top20]
+    y = [i[1] for i in top20]
+    c = (
+        Line(init_opts=opts.InitOpts(theme=ThemeType.MACARONS, width="1000px", height="600px"))
+        .add_xaxis(x)
+        .add_yaxis("词频", y, is_smooth=True)
+        .set_global_opts(title_opts=opts.TitleOpts(title="Top20 词汇词频折线图"), xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(rotate=-45)))
+    )
+    return c.render_embed()
 
-def generate_line(data):
-    words = [item[0] for item in data]
-    freqs = [item[1] for item in data]
-    
-    fig, ax = plt.subplots(figsize=(12, 6))
-    sns.lineplot(x=range(len(words)), y=freqs, ax=ax, marker='o', color='blue')
-    ax.set_title('折线图', fontsize=16)
-    ax.set_xlabel('词汇序号', fontsize=12)
-    ax.set_ylabel('词频', fontsize=12)
-    ax.set_xticks(range(len(words)))
-    ax.set_xticklabels(words, rotation=45)
-    plt.tight_layout()
-    return fig
+def render_pie(data):
+    top10 = data.most_common(10)
+    c = (
+        Pie(init_opts=opts.InitOpts(theme=ThemeType.MACARONS, width="1000px", height="600px"))
+        .add("", top10, radius=["30%", "75%"], center=["50%", "50%"])
+        .set_global_opts(title_opts=opts.TitleOpts(title="Top10 词汇占比饼图"))
+        .set_series_opts(label_opts=opts.LabelOpts(formatter="{b}: {c}"))
+    )
+    return c.render_embed()
 
+def render_scatter(data):
+    top20 = data.most_common(20)
+    x = [str(i+1) for i in range(len(top20))]
+    y = [i[1] for i in top20]
+    c = (
+        Scatter(init_opts=opts.InitOpts(theme=ThemeType.MACARONS, width="1000px", height="600px"))
+        .add_xaxis(x)
+        .add_yaxis("词频", y)
+        .set_global_opts(title_opts=opts.TitleOpts(title="词汇词频散点图"))
+    )
+    return c.render_embed()
 
-def generate_pie(data):
-    words = [item[0] for item in data]
-    freqs = [item[1] for item in data]
-    
-    fig, ax = plt.subplots(figsize=(8, 8))
-    ax.pie(freqs, labels=words, autopct='%1.1f%%', startangle=90)
-    ax.set_title('饼图', fontsize=16)
-    plt.tight_layout()
-    return fig
+def render_funnel(data):
+    top10 = data.most_common(10)
+    c = (
+        Funnel(init_opts=opts.InitOpts(theme=ThemeType.MACARONS, width="1000px", height="600px"))
+        .add("词频漏斗", top10, sort_="descending")
+        .set_global_opts(title_opts=opts.TitleOpts(title="词频漏斗图"))
+    )
+    return c.render_embed()
 
+def render_radar(data):
+    # 雷达图限制Top6，避免溢出（修复Bug）
+    top6 = data.most_common(6)
+    indicators = [opts.RadarIndicatorItem(name=k, max_=max([x[1] for x in top6])) for k, _ in top6]
+    values = [[v for _, v in top6]]
+    c = (
+        Radar(init_opts=opts.InitOpts(theme=ThemeType.MACARONS, width="1000px", height="600px"))
+        .add_schema(schema=indicators)
+        .add("词频", values)
+        .set_series_opts(label_opts=opts.LabelOpts(is_show=True))
+        .set_global_opts(title_opts=opts.TitleOpts(title="Top6 词汇雷达图"))
+    )
+    return c.render_embed()
 
-def generate_scatter(data):
-    words = [item[0] for item in data]
-    freqs = [item[1] for item in data]
-    
-    fig, ax = plt.subplots(figsize=(12, 6))
-    sns.scatterplot(x=range(len(words)), y=freqs, ax=ax, s=100, color='red')
-    ax.set_title('散点图', fontsize=16)
-    ax.set_xlabel('词汇序号', fontsize=12)
-    ax.set_ylabel('词频', fontsize=12)
-    plt.tight_layout()
-    return fig
-
-
-def generate_funnel(data):
-    words = [item[0] for item in data]
-    freqs = [item[1] for item in data]
-    
-    fig, ax = plt.subplots(figsize=(8, 6))
-    y_pos = range(len(words))
-    width = [f / max(freqs) * 100 for f in freqs]
-    
-    for i, (word, w) in enumerate(zip(words, width)):
-        ax.barh(i, w, height=0.8, alpha=0.7)
-        ax.text(w + 1, i, f'{word} ({freqs[i]})', va='center')
-    
-    ax.set_title('漏斗图', fontsize=16)
-    ax.set_yticks(y_pos)
-    ax.set_yticklabels(words)
-    ax.set_xlabel('相对频率 (%)', fontsize=12)
-    plt.tight_layout()
-    return fig
-
-
-chart_renderers = {
-    "词云图": generate_wordcloud,
-    "柱状图": generate_bar,
-    "折线图": generate_line,
-    "饼图": generate_pie,
-    "散点图": generate_scatter,
-    "漏斗图": generate_funnel,
+# 图表路由字典（替代if-elif，代码优化）
+chart_dispatch = {
+    "词云图": render_wordcloud,
+    "柱状图": render_bar,
+    "折线图": render_line,
+    "饼图": render_pie,
+    "散点图": render_scatter,
+    "漏斗图": render_funnel,
+    "雷达图": render_radar
 }
 
+# ===================== 主逻辑执行 =====================
+if run_btn and url.strip():
+    with st.spinner("正在抓取网页、分析文本，请稍候..."):
+        # 1. 抓取文本
+        raw_text = fetch_text(url)
+        if raw_text.startswith("ERROR"):
+            st.error(raw_text)
+        else:
+            # 2. 词频统计
+            word_counter = get_word_frequency(raw_text, min_frequency)
+            if not word_counter:
+                st.warning("未分析出有效词汇，请调整词频阈值或更换URL！")
+            else:
+                # 3. 基础数据展示
+                st.subheader("📊 词频统计表(Top20)")
+                df = pd.DataFrame(word_counter.most_common(20), columns=["词汇", "词频"])
+                st.dataframe(df, use_container_width=True)
 
-def main():
-    st.set_page_config(page_title="词频分析可视化系统", layout="wide")
-    st.title("词频分析可视化系统")
-    st.sidebar.header("参数设置")
+                # 4. 渲染选中图表
+                st.subheader("📈 可视化图表")
+                chart_html = chart_dispatch[chart_type](word_counter)
+                st.components.v1.html(chart_html, height=620)
 
-    url_input = st.sidebar.text_input("输入文章URL", "")
-    custom_text = st.sidebar.text_area("或直接输入文本", "")
-
-    min_freq = st.sidebar.slider("最低词频过滤", min_value=1, max_value=20, value=1, step=1)
-    top_n = st.sidebar.slider("显示Top-N词汇", min_value=5, max_value=50, value=20, step=1)
-
-    chart_type = st.sidebar.selectbox("选择图表类型", list(chart_renderers.keys()))
-
-    if st.sidebar.button("开始分析"):
-        with st.spinner("正在分析..."):
-            try:
-                if url_input:
-                    text = fetch_text(url_input)
-                    st.info(f"成功抓取网页内容，共 {len(text)} 字符")
-                elif custom_text:
-                    text = custom_text
-                else:
-                    st.warning("请输入URL或文本")
-                    return
-
-                if not text.strip():
-                    st.error("未获取到有效文本内容")
-                    return
-
-                top_words = get_top_words(text, top_n, min_freq)
-
-                if not top_words:
-                    st.warning("没有满足条件的词汇，请降低词频阈值")
-                    return
-
-                st.subheader(f"{chart_type}")
-                fig = chart_renderers[chart_type](top_words)
-                st.pyplot(fig)
-                plt.close('all')
-
-                st.subheader("Top-20 高频词列表")
-                df = pd.DataFrame(top_words, columns=["词汇", "词频"])
-                st.dataframe(df)
-
-                csv_buffer = io.StringIO()
-                df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
+                # 5. 导出CSV（Should级功能）
                 st.download_button(
-                    label="下载词频CSV",
-                    data=csv_buffer.getvalue(),
+                    label="📥 下载词频数据(CSV)",
+                    data=df.to_csv(index=False, encoding="utf-8-sig"),
                     file_name="word_frequency.csv",
                     mime="text/csv"
                 )
-
-            except Exception as e:
-                st.error(f"分析失败: {str(e)}")
-
-
-if __name__ == "__main__":
-    main()
+elif run_btn and not url.strip():
+    st.warning("请先输入有效的网页URL！")

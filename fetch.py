@@ -1,38 +1,27 @@
+# fetch.py
 import requests
 from bs4 import BeautifulSoup
-import re
 
-def fetch_text(url: str) -> str:
+def fetch_text(url: str, timeout: int = 10) -> str:
     """
-    从指定URL抓取网页正文内容
-    
-    Args:
-        url: 网页地址
-        
-    Returns:
-        网页正文文本
+    根据URL抓取网页正文，过滤脚本、样式标签
+    :param url: 目标网页地址
+    :param timeout: 请求超时时间
+    :return: 纯文本内容
     """
     try:
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
-        resp = requests.get(url, headers=headers, timeout=10)
+        resp = requests.get(url, headers=headers, timeout=timeout)
+        # 自动识别网页编码，解决乱码
         resp.encoding = resp.apparent_encoding
-        soup = BeautifulSoup(resp.text, 'html.parser')
-        
-        for script in soup(["script", "style", "noscript", "iframe", "nav", "header", "footer"]):
-            script.decompose()
-        
-        text = soup.get_text(separator='\n', strip=True)
-        text = re.sub(r'\n+', '\n', text).strip()
-        
-        return text
-    except requests.RequestException as e:
-        raise Exception(f"抓取网页失败: {str(e)}")
-    except Exception as e:
-        raise Exception(f"解析网页失败: {str(e)}")
+        soup = BeautifulSoup(resp.text, "html.parser")
 
-if __name__ == "__main__":
-    url = "https://www.example.com"
-    text = fetch_text(url)
-    print(text[:500])
+        # 移除无用标签
+        for tag in soup(["script", "style", "iframe", "noscript"]):
+            tag.decompose()
+
+        return soup.get_text(strip=True)
+    except requests.RequestException as e:
+        return f"ERROR: 网页请求失败 -> {str(e)}"

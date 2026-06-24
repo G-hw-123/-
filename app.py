@@ -1,105 +1,101 @@
 import streamlit as st
 import pandas as pd
 import io
-import os
+import matplotlib.pyplot as plt
+from wordcloud import WordCloud
+import seaborn as sns
 from fetch import fetch_text
-from tokenize_words import get_top_words, get_word_freq
-from pyecharts.charts import WordCloud, Bar, Line, Pie, Scatter, Funnel, Radar
-from pyecharts import options as opts
+from tokenize_words import get_top_words
 
 
 def generate_wordcloud(data):
-    words = [(word, freq) for word, freq in data]
-    wc = (
-        WordCloud()
-        .add("", words, word_size_range=[20, 100])
-        .set_global_opts(title_opts=opts.TitleOpts(title="词云图"))
-    )
-    return wc.render_embed()
+    word_dict = {word: freq for word, freq in data}
+    wc = WordCloud(
+        font_path=None,
+        width=800,
+        height=400,
+        background_color='white',
+        max_words=100,
+        prefer_horizontal=0.9
+    ).generate_from_frequencies(word_dict)
+    
+    fig, ax = plt.subplots(figsize=(12, 6))
+    ax.imshow(wc, interpolation='bilinear')
+    ax.axis('off')
+    plt.title('Word Cloud', fontsize=16)
+    return fig
 
 
 def generate_bar(data):
     words = [item[0] for item in data]
     freqs = [item[1] for item in data]
-    bar = (
-        Bar()
-        .add_xaxis(words)
-        .add_yaxis("词频", freqs)
-        .set_global_opts(
-            title_opts=opts.TitleOpts(title="柱状图"),
-            xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(rotate=45))
-        )
-    )
-    return bar.render_embed()
+    
+    fig, ax = plt.subplots(figsize=(12, 6))
+    sns.barplot(x=freqs, y=words, ax=ax, palette='viridis')
+    ax.set_title('柱状图', fontsize=16)
+    ax.set_xlabel('词频', fontsize=12)
+    ax.set_ylabel('词汇', fontsize=12)
+    plt.tight_layout()
+    return fig
 
 
 def generate_line(data):
     words = [item[0] for item in data]
     freqs = [item[1] for item in data]
-    line = (
-        Line()
-        .add_xaxis(words)
-        .add_yaxis("词频", freqs)
-        .set_global_opts(
-            title_opts=opts.TitleOpts(title="折线图"),
-            xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(rotate=45))
-        )
-    )
-    return line.render_embed()
+    
+    fig, ax = plt.subplots(figsize=(12, 6))
+    sns.lineplot(x=range(len(words)), y=freqs, ax=ax, marker='o', color='blue')
+    ax.set_title('折线图', fontsize=16)
+    ax.set_xlabel('词汇序号', fontsize=12)
+    ax.set_ylabel('词频', fontsize=12)
+    ax.set_xticks(range(len(words)))
+    ax.set_xticklabels(words, rotation=45)
+    plt.tight_layout()
+    return fig
 
 
 def generate_pie(data):
-    pie = (
-        Pie()
-        .add("", data)
-        .set_global_opts(title_opts=opts.TitleOpts(title="饼图"))
-        .set_series_opts(label_opts=opts.LabelOpts(formatter="{b}: {c}"))
-    )
-    return pie.render_embed()
+    words = [item[0] for item in data]
+    freqs = [item[1] for item in data]
+    
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.pie(freqs, labels=words, autopct='%1.1f%%', startangle=90)
+    ax.set_title('饼图', fontsize=16)
+    plt.tight_layout()
+    return fig
 
 
 def generate_scatter(data):
     words = [item[0] for item in data]
     freqs = [item[1] for item in data]
-    indices = list(range(1, len(words) + 1))
-    scatter = (
-        Scatter()
-        .add_xaxis(indices)
-        .add_yaxis("词频", list(zip(indices, freqs)))
-        .set_global_opts(
-            title_opts=opts.TitleOpts(title="散点图"),
-            xaxis_opts=opts.AxisOpts(name="词序"),
-            yaxis_opts=opts.AxisOpts(name="词频")
-        )
-    )
-    return scatter.render_embed()
+    
+    fig, ax = plt.subplots(figsize=(12, 6))
+    sns.scatterplot(x=range(len(words)), y=freqs, ax=ax, s=100, color='red')
+    ax.set_title('散点图', fontsize=16)
+    ax.set_xlabel('词汇序号', fontsize=12)
+    ax.set_ylabel('词频', fontsize=12)
+    plt.tight_layout()
+    return fig
 
 
 def generate_funnel(data):
-    funnel = (
-        Funnel()
-        .add("词频", data)
-        .set_global_opts(title_opts=opts.TitleOpts(title="漏斗图"))
-        .set_series_opts(label_opts=opts.LabelOpts(formatter="{b}: {c}"))
-    )
-    return funnel.render_embed()
-
-
-def generate_radar(data):
-    top6 = data[:6]
-    if not top6:
-        return "<div style='text-align:center;padding:50px;color:#666;'>没有足够的数据生成雷达图</div>"
-    max_freq = max([d[1] for d in data]) if data else 1
-    indicator = [{"name": item[0], "max": max_freq} for item in top6]
-    values = [[item[1] for item in top6]]
-
-    radar = (
-        Radar()
-        .add_schema(indicator=indicator)
-        .add("高频词", values)
-        .set_global_opts(title_opts=opts.TitleOpts(title="雷达图（Top-6）"))
-    )
-    return radar.render_embed()
+    words = [item[0] for item in data]
+    freqs = [item[1] for item in data]
+    
+    fig, ax = plt.subplots(figsize=(8, 6))
+    y_pos = range(len(words))
+    width = [f / max(freqs) * 100 for f in freqs]
+    
+    for i, (word, w) in enumerate(zip(words, width)):
+        ax.barh(i, w, height=0.8, alpha=0.7)
+        ax.text(w + 1, i, f'{word} ({freqs[i]})', va='center')
+    
+    ax.set_title('漏斗图', fontsize=16)
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(words)
+    ax.set_xlabel('相对频率 (%)', fontsize=12)
+    plt.tight_layout()
+    return fig
 
 
 chart_renderers = {
@@ -109,7 +105,6 @@ chart_renderers = {
     "饼图": generate_pie,
     "散点图": generate_scatter,
     "漏斗图": generate_funnel,
-    "雷达图": generate_radar
 }
 
 
@@ -148,11 +143,12 @@ def main():
                     st.warning("没有满足条件的词汇，请降低词频阈值")
                     return
 
-                st.subheader(f" {chart_type}")
-                chart_html = chart_renderers[chart_type](top_words)
-                st.components.v1.html(chart_html, height=500)
+                st.subheader(f"{chart_type}")
+                fig = chart_renderers[chart_type](top_words)
+                st.pyplot(fig)
+                plt.close('all')
 
-                st.subheader(" Top-20 高频词列表")
+                st.subheader("Top-20 高频词列表")
                 df = pd.DataFrame(top_words, columns=["词汇", "词频"])
                 st.dataframe(df)
 
